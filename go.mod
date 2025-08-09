@@ -3,7 +3,7 @@ module go.chrisrx.dev/tools
 go 1.24.5
 
 require (
-	go.chrisrx.dev/x v0.0.0-20250808204516-308fc36bc708
+	go.chrisrx.dev/x v0.0.0-20250809184336-192fd89ba154
 	golang.org/x/tools v0.36.0
 )
 

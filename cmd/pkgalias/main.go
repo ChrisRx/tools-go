@@ -10,11 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"text/template"
 
 	"go.chrisrx.dev/x/ptr"
+	"go.chrisrx.dev/x/set"
+	"go.chrisrx.dev/x/slices"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -79,14 +80,14 @@ func main() {
 
 var t = template.Must(template.New("").Funcs(map[string]any{
 	"join":   join,
-	"fields": parseFieldList,
+	"fields": (&printer{}).fieldList,
 	"fieldnames": func(fields []*ast.Field) []string {
-		return FlatMap(fields, func(field *ast.Field) []string {
-			names := Map(field.Names, func(ident *ast.Ident) string {
+		return slices.FlatMap(fields, func(field *ast.Field) []string {
+			names := slices.Map(field.Names, func(ident *ast.Ident) string {
 				return ident.String()
 			})
 			if _, ok := field.Type.(*ast.Ellipsis); ok {
-				return Map(names, func(name string) string {
+				return slices.Map(names, func(name string) string {
 					return name + "..."
 				})
 			}
@@ -203,13 +204,15 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 
 	file := &File{
 		Name: files[0].Name.String(),
-		Docs: FlatMap(files, func(f *ast.File) []string {
-			return Map(ptr.From(f.Doc).List, func(c *ast.Comment) string {
+		Docs: slices.FlatMap(files, func(f *ast.File) []string {
+			return slices.Map(ptr.From(f.Doc).List, func(c *ast.Comment) string {
 				return c.Text
 			})
 		}),
 		Imports: []string{files[0].Name.String()},
 	}
+	var printer printer
+	printer.imports.Add(file.Name)
 	for _, f := range files {
 		for _, d := range f.Decls {
 			switch d := d.(type) {
@@ -220,9 +223,10 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 						if !t.Name.IsExported() || slices.Contains(ignore, t.Name.String()) {
 							continue
 						}
+						// printer.expr(t.Type)
 						file.Aliases = append(file.Aliases, &Alias{
 							Name: t.Name.String(),
-							Docs: Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
+							Docs: slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
 								return c.Text
 							}),
 						})
@@ -231,7 +235,7 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 							if name.IsExported() || slices.Contains(ignore, name.String()) {
 								file.Vars = append(file.Vars, &Var{
 									Name: name.String(),
-									Docs: Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
+									Docs: slices.Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
 										return c.Text
 									}),
 								})
@@ -246,30 +250,9 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 				if d.Recv != nil {
 					continue
 				}
-				for _, field := range ptr.From(d.Type.TypeParams).List {
-					if expr, ok := field.Type.(*ast.IndexListExpr); ok {
-						if sel, ok := expr.X.(*ast.SelectorExpr); ok {
-							file.Imports = append(file.Imports, printExpr(sel.X))
-						}
-					}
-					if sel, ok := field.Type.(*ast.SelectorExpr); ok {
-						file.Imports = append(file.Imports, printExpr(sel.X))
-					}
-				}
-				for _, field := range ptr.From(d.Type.Params).List {
-					if expr, ok := field.Type.(*ast.IndexListExpr); ok {
-						if sel, ok := expr.X.(*ast.SelectorExpr); ok {
-							file.Imports = append(file.Imports, printExpr(sel.X))
-						}
-					}
-				}
-				for _, field := range ptr.From(d.Type.Results).List {
-					if expr, ok := field.Type.(*ast.IndexListExpr); ok {
-						if sel, ok := expr.X.(*ast.SelectorExpr); ok {
-							file.Imports = append(file.Imports, printExpr(sel.X))
-						}
-					}
-				}
+				printer.fieldList(d.Type.TypeParams)
+				printer.fieldList(d.Type.Params)
+				printer.fieldList(d.Type.Results)
 				for _, field := range ptr.From(d.Type.Params).List {
 					for i, name := range field.Names {
 						if name.String() == file.Name {
@@ -277,9 +260,10 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 						}
 					}
 				}
+
 				file.Funcs = append(file.Funcs, &Func{
 					Name: d.Name.String(),
-					Docs: Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
+					Docs: slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
 						return c.Text
 					}),
 					TypeParams: d.Type.TypeParams,
@@ -289,72 +273,65 @@ func parseFile(files []*ast.File, ignore ...string) *File {
 			}
 		}
 	}
+	file.Imports = printer.imports.List()
 	return file
 }
 
-func parseFieldList(fields *ast.FieldList) []string {
-	if fields == nil {
-		return nil
-	}
-	return Map(fields.List, func(field *ast.Field) string {
-		if len(field.Names) == 0 {
-			return printExpr(field.Type)
-		}
-		return fmt.Sprintf("%s %s", strings.Join(
-			Map(field.Names, func(ident *ast.Ident) string {
-				return ident.String()
-			}), ", ",
-		), printExpr(field.Type))
-	})
+type printer struct {
+	imports set.Set[string]
 }
 
-func printExpr(x ast.Expr) string {
+func (p *printer) expr(x ast.Expr) string {
 	switch t := x.(type) {
 	case *ast.StarExpr:
-		return fmt.Sprintf("*%s", printExpr(t.X))
+		return fmt.Sprintf("*%s", p.expr(t.X))
 	case *ast.Ident:
 		return t.Name
 	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", printExpr(t.X), t.Sel.Name)
+		p.imports.Add(p.expr(t.X))
+		return fmt.Sprintf("%s.%s", p.expr(t.X), t.Sel.Name)
 	case *ast.ArrayType:
-		return fmt.Sprintf("[]%s", printExpr(t.Elt))
+		return fmt.Sprintf("[]%s", p.expr(t.Elt))
 	case *ast.MapType:
-		return fmt.Sprintf("map[%s]%s", printExpr(t.Key), printExpr(t.Value))
+		return fmt.Sprintf("map[%s]%s", p.expr(t.Key), p.expr(t.Value))
 	case *ast.Ellipsis:
-		return fmt.Sprintf("...%s", printExpr(t.Elt))
+		return fmt.Sprintf("...%s", p.expr(t.Elt))
 	case *ast.IndexExpr:
-		return fmt.Sprintf("%s[%s]", printExpr(t.X), t.Index)
+		return fmt.Sprintf("%s[%s]", p.expr(t.X), t.Index)
 	case *ast.IndexListExpr:
-		indices := strings.Join(Map(t.Indices, printExpr), ", ")
-		return fmt.Sprintf("%s[%s]", printExpr(t.X), indices)
+		indices := strings.Join(slices.Map(t.Indices, p.expr), ", ")
+		return fmt.Sprintf("%s[%s]", p.expr(t.X), indices)
 	case *ast.FuncType:
 		var sb strings.Builder
 		sb.WriteString("func(")
-		sb.WriteString(strings.Join(parseFieldList(t.Params), ", "))
+		sb.WriteString(strings.Join(p.fieldList(t.Params), ", "))
 		sb.WriteString(") ")
 		sb.WriteString("(")
-		sb.WriteString(strings.Join(parseFieldList(t.Results), ", "))
+		sb.WriteString(strings.Join(p.fieldList(t.Results), ", "))
 		sb.WriteString(")")
 		return sb.String()
 	case *ast.UnaryExpr:
-		return printExpr(t.X)
+		return p.expr(t.X)
+	case *ast.StructType:
+		p.fieldList(t.Fields)
+		return "idk"
 	default:
 		panic(fmt.Errorf("tt:  %T", t))
 	}
 }
 
-func Map[T any, R any](col []T, fn func(elem T) R) []R {
-	results := make([]R, len(col))
-	for i, v := range col {
-		results[i] = fn(v)
+func (p *printer) fieldList(fields *ast.FieldList) []string {
+	if fields == nil {
+		return nil
 	}
-	return results
-}
-
-func FlatMap[T any, R any](col []T, fn func(elem T) []R) []R {
-	results := make([]R, 0)
-	for _, elem := range col {
-		results = append(results, fn(elem)...)
-	}
-	return results
+	return slices.Map(fields.List, func(field *ast.Field) string {
+		if len(field.Names) == 0 {
+			return p.expr(field.Type)
+		}
+		return fmt.Sprintf("%s %s", strings.Join(
+			slices.Map(field.Names, func(ident *ast.Ident) string {
+				return ident.String()
+			}), ", ",
+		), p.expr(field.Type))
+	})
 }
