@@ -119,12 +119,20 @@ import (
 {{- end }}
 
 {{- range .Consts }}
-{{ .Docs | join "\n" }}
+{{ with .Docs }}
+{{ . | join "\n" }}
+//
+{{- end }}
+// This is an alias of https://pkg.go.dev/{{ $.PkgPath }}#{{ .Name }}.
 const {{ .Name }} = {{ $.Name }}.{{ .Name }}
 {{ end -}}
 
 {{- range .Vars }}
-{{ .Docs | join "\n" }}
+{{ with .Docs }}
+{{ . | join "\n" }}
+//
+{{- end }}
+// This is an alias of https://pkg.go.dev/{{ $.PkgPath }}#{{ .Name }}.
 var {{ .Name }} = {{ $.Name }}.{{ .Name }}
 {{ end -}}
 
@@ -138,7 +146,10 @@ type {{ .Name }} = {{ $.Name }}.{{ .Name }}
 {{ end -}}
 
 {{ range .Funcs }}
-{{ .Docs | join "\n" }}
+{{ with .Docs }}
+{{ . | join "\n" }}
+//
+{{- end }}
 // This is an alias of https://pkg.go.dev/{{ $.PkgPath }}#{{ .Name }}.
 func {{ .Name }}{{ with .TypeParams }}[{{ . | fields | join ", " }}]{{ end }}(
 	{{- with .Params }}{{ . | fields | join ", " }}{{ end -}}
