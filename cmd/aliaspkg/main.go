@@ -246,6 +246,9 @@ func ParsePackage(pkg *packages.Package, ignore ...string) *File {
 
 	imports := set.New(file.Imports...)
 	for _, pkg := range pkg.Imports {
+		if strings.Contains(pkg.PkgPath, "internal/") {
+			continue
+		}
 		imports.Add(pkg.PkgPath)
 	}
 	imports.Add(pkg.PkgPath)
