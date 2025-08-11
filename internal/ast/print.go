@@ -89,6 +89,8 @@ func (p *Printer) PrintExpr(x ast.Expr) string {
 	case *ast.StructType:
 		p.PrintFieldList(t.Fields)
 		return "idk"
+	case *ast.InterfaceType:
+		return "any"
 	default:
 		panic(fmt.Errorf("tt:  %T", t))
 	}
