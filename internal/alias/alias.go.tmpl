@@ -50,7 +50,7 @@ func {{ .Name }}{{ with .TypeParams }}[{{ . | fields | join ", " }}]{{ end }}(
 ) (
 	{{- with .Results }}{{ . | fields | join ", " }}{{ end -}}
 ) {
-	{{ with .Results }}{{ if .List }}return {{ end }}{{ end}}{{ $.Name }}.{{ .Name }}(
+	{{ with .Results }}{{ if .List }}return {{ end }}{{ end}}{{ $.Name }}.{{ .Name }}{{ with .TypeParams }}[{{ .List | fieldnames | join ", " }}]{{ end }}(
 		{{- with .Params }}
 			{{- .List | fieldnames | join ", " -}}
 		{{- end -}}
