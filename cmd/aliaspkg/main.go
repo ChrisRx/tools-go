@@ -13,42 +13,79 @@ import (
 	"go.chrisrx.dev/tools/internal/alias"
 )
 
-func main() {
-	var (
-		pkg     string
-		ignore  string
-		include string
-		out     string
-		stdout  bool
-	)
-	flag.StringVar(&pkg, "package", "", "The package path to alias")
-	flag.StringVar(&ignore, "ignore", "", "A comma-delimited list of identifiers to ignore")
-	flag.StringVar(&include, "include", "", "A comma-delimited list of identifiers to include (overrides ignore)")
-	flag.StringVar(&out, "out", "", "Directory to output alias.go file")
-	flag.BoolVar(&stdout, "stdout", false, "Output to stdout")
-	flag.Parse()
+var opts struct {
+	Docs    string
+	Package string
+	Ignore  string
+	Include string
+	File    string
+	Stdout  bool
+}
 
-	if pkg == "" {
-		v, ok := os.LookupEnv("GOPACKAGE")
-		if !ok {
-			log.Fatal("must provide package")
-		}
-		pkg = v
+func init() {
+	flag.StringVar(&opts.Docs, "docs", "none", "Documentation to generate")
+	flag.StringVar(&opts.Ignore, "ignore", "", "A comma-delimited list of identifiers to ignore")
+	flag.StringVar(&opts.Include, "include", "", "A comma-delimited list of identifiers to include (overrides ignore)")
+	flag.StringVar(&opts.File, "file", "", "Output location for generated file")
+	flag.BoolVar(&opts.Stdout, "stdout", false, "Output to stdout")
+	flag.Parse()
+	if flag.NArg() > 0 {
+		opts.Package = flag.Args()[0]
 	}
 
-	if out == "" {
+	if opts.Package == "" {
+		pkg, ok := os.LookupEnv("GOPACKAGE")
+		if !ok {
+			fmt.Fprint(os.Stderr, Usage)
+			os.Exit(1)
+		}
+		opts.Package = pkg
+	}
+	if opts.File == "" {
 		_, ok := os.LookupEnv("GOFILE")
-		if !ok && !stdout {
+		if !ok && !opts.Stdout {
 			log.Fatal("must provide output directory or stdout")
 		}
 		dir, err := os.Getwd()
 		if err != nil {
 			log.Fatal(err)
 		}
-		out = filepath.Join(dir, "alias.go")
+		opts.File = filepath.Join(dir, "alias.go")
 	}
+}
 
-	pkgs, err := packages.Load(&packages.Config{Mode: packages.LoadAllSyntax}, pkg)
+const Usage = `aliaspkg: generate aliases for Go packages
+
+Usage:
+
+  aliaspkg  [-docs=package|decls|all|none] [-file=...] <package>
+
+Flags:
+
+-docs               Specifies the documentation that should be included, one of:
+
+                      package      Package-level docs
+                      decls        Docs for functions/types/variables
+                      all          All available docs
+                      none         Don't include docs
+
+                    If not provided, defaults to none.
+
+-file               Specifies the output file for the generated package alias.
+
+                    If GOFILE is set in the environment then this defaults to the
+                    $(pwd)/alias.go.
+
+                    Ignored if -stdout is provided.
+
+-include/-ignore    Specifies types, functions and variables to include/ignore
+                    from the package being aliased.
+
+-stdout             Include the package's tests in the analysis.
+`
+
+func main() {
+	pkgs, err := packages.Load(&packages.Config{Mode: packages.LoadAllSyntax}, opts.Package)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,19 +99,20 @@ func main() {
 
 	data, err := alias.GenerateFile(
 		alias.Parse(pkgs[0],
-			alias.Ignore(strings.Split(ignore, ",")...),
-			alias.Include(strings.Split(include, ",")...),
+			alias.Ignore(strings.Split(opts.Ignore, ",")...),
+			alias.Include(strings.Split(opts.Include, ",")...),
+			alias.Docs(opts.Docs),
 		),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if stdout {
+	if opts.Stdout {
 		fmt.Printf("%s\n", data)
 		return
 	}
-	if err := os.WriteFile(out, data, 0644); err != nil {
+	if err := os.WriteFile(opts.File, data, 0644); err != nil {
 		log.Fatal(err)
 	}
 }

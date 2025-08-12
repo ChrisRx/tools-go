@@ -26,11 +26,11 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 	}
 	file := &File{
 		Name: pkg.Syntax[0].Name.String(),
-		Docs: slices.FlatMap(pkg.Syntax, func(f *ast.File) []string {
+		Docs: o.IncludeDocs(slices.FlatMap(pkg.Syntax, func(f *ast.File) []string {
 			return slices.Map(ptr.From(f.Doc).List, func(c *ast.Comment) string {
 				return c.Text
 			})
-		}),
+		}), "package", "all"),
 		PkgPath: pkg.PkgPath,
 		Imports: imports.List(),
 	}
@@ -50,9 +50,9 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 						}
 						file.Aliases = append(file.Aliases, &Alias{
 							Name: t.Name.String(),
-							Docs: slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
+							Docs: o.IncludeDocs(slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
 								return c.Text
-							}),
+							}), "decls", "all"),
 						})
 					case *ast.ValueSpec:
 						for _, name := range t.Names {
@@ -64,16 +64,16 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 								case ast.Con:
 									file.Consts = append(file.Consts, &Const{
 										Name: name.String(),
-										Docs: slices.Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
+										Docs: o.IncludeDocs(slices.Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
 											return c.Text
-										}),
+										}), "decls", "all"),
 									})
 								case ast.Var:
 									file.Vars = append(file.Vars, &Var{
 										Name: name.String(),
-										Docs: slices.Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
+										Docs: o.IncludeDocs(slices.Map(ptr.From(t.Doc).List, func(c *ast.Comment) string {
 											return c.Text
-										}),
+										}), "decls", "all"),
 									})
 								}
 							}
@@ -103,9 +103,9 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 
 				file.Funcs = append(file.Funcs, &Func{
 					Name: d.Name.String(),
-					Docs: slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
+					Docs: o.IncludeDocs(slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
 						return c.Text
-					}),
+					}), "decls", "all"),
 					TypeParams: d.Type.TypeParams,
 					Params:     d.Type.Params,
 					Results:    d.Type.Results,
