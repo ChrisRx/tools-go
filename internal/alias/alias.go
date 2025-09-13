@@ -13,6 +13,8 @@ type File struct {
 	Funcs   []*Func
 	Consts  []*Const
 	Vars    []*Var
+
+	GoBuildVersion string
 }
 
 type Const struct {
@@ -34,6 +36,7 @@ type Func struct {
 }
 
 type Alias struct {
-	Name string
-	Docs []string
+	Name       string
+	Docs       []string
+	TypeParams *ast.FieldList
 }

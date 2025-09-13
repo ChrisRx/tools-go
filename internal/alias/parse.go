@@ -31,8 +31,9 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 				return c.Text
 			})
 		}), "package", "all"),
-		PkgPath: pkg.PkgPath,
-		Imports: imports.List(),
+		PkgPath:        pkg.PkgPath,
+		Imports:        imports.List(),
+		GoBuildVersion: o.GoBuildVersion,
 	}
 
 	for _, f := range pkg.Syntax {
@@ -53,6 +54,7 @@ func Parse(pkg *packages.Package, opts ...Option) *File {
 							Docs: o.IncludeDocs(slices.Map(ptr.From(d.Doc).List, func(c *ast.Comment) string {
 								return c.Text
 							}), "decls", "all"),
+							TypeParams: t.TypeParams,
 						})
 					case *ast.ValueSpec:
 						for _, name := range t.Names {

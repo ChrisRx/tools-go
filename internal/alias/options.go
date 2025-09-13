@@ -5,9 +5,10 @@ import (
 )
 
 type options struct {
-	Docs    string
-	Ignore  []string
-	Include []string
+	Docs           string
+	Ignore         []string
+	Include        []string
+	GoBuildVersion string
 }
 
 func newOptions(opts []Option) *options {
@@ -58,5 +59,10 @@ func Include(include ...string) Option {
 func Docs(docs string) Option {
 	return func(o *options) {
 		o.Docs = docs
+	}
+}
+func GoBuildVersion(v string) Option {
+	return func(o *options) {
+		o.GoBuildVersion = v
 	}
 }

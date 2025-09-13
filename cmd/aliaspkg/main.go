@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -14,12 +15,13 @@ import (
 )
 
 var opts struct {
-	Docs    string
-	Package string
-	Ignore  string
-	Include string
-	File    string
-	Stdout  bool
+	Docs              string
+	Package           string
+	Ignore            string
+	Include           string
+	File              string
+	Stdout            bool
+	UseGoBuildVersion bool
 }
 
 func init() {
@@ -28,6 +30,7 @@ func init() {
 	flag.StringVar(&opts.Include, "include", "", "A comma-delimited list of identifiers to include (overrides ignore)")
 	flag.StringVar(&opts.File, "file", "", "Output location for generated file")
 	flag.BoolVar(&opts.Stdout, "stdout", false, "Output to stdout")
+	flag.BoolVar(&opts.UseGoBuildVersion, "gover", false, "Generate file specific to Go build version")
 	flag.Parse()
 	if flag.NArg() > 0 {
 		opts.Package = flag.Args()[0]
@@ -50,8 +53,26 @@ func init() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		opts.File = filepath.Join(dir, "alias.go")
+		filename := "alias.go"
+		if opts.UseGoBuildVersion {
+			filename = fmt.Sprintf("alias_%s.go", strings.ReplaceAll(goBuildVersion(), ".", "_"))
+		}
+		opts.File = filepath.Join(dir, filename)
 	}
+}
+
+func goBuildVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		panic("must build with module support to use Go build version")
+	}
+	switch strings.Count(info.GoVersion, ".") {
+	case 0, 1:
+		return info.GoVersion
+	default:
+		return strings.Join(strings.Split(info.GoVersion, ".")[:2], ".")
+	}
+
 }
 
 const Usage = `aliaspkg: generate aliases for Go packages
@@ -82,6 +103,7 @@ Flags:
                     from the package being aliased.
 
 -stdout             Include the package's tests in the analysis.
+-gover              Generate a file only for this Go build version
 `
 
 func main() {
@@ -97,13 +119,15 @@ func main() {
 		log.Fatal("no packages")
 	}
 
-	data, err := alias.GenerateFile(
-		alias.Parse(pkgs[0],
-			alias.Ignore(strings.Split(opts.Ignore, ",")...),
-			alias.Include(strings.Split(opts.Include, ",")...),
-			alias.Docs(opts.Docs),
-		),
-	)
+	parseOpts := []alias.Option{
+		alias.Ignore(strings.Split(opts.Ignore, ",")...),
+		alias.Include(strings.Split(opts.Include, ",")...),
+		alias.Docs(opts.Docs),
+	}
+	if opts.UseGoBuildVersion {
+		parseOpts = append(parseOpts, alias.GoBuildVersion(goBuildVersion()))
+	}
+	data, err := alias.GenerateFile(alias.Parse(pkgs[0], parseOpts...))
 	if err != nil {
 		log.Fatal(err)
 	}

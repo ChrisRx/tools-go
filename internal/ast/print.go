@@ -85,7 +85,7 @@ func (p *Printer) PrintExpr(x ast.Expr) string {
 		sb.WriteString(")")
 		return sb.String()
 	case *ast.UnaryExpr:
-		return p.PrintExpr(t.X)
+		return fmt.Sprintf("%s%s", t.Op, p.PrintExpr(t.X))
 	case *ast.StructType:
 		p.PrintFieldList(t.Fields)
 		return "idk"
